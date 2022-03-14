@@ -1,0 +1,22 @@
+{
+  "name": "signalk-pisugar",
+  "version": "0.0.1",
+  "description": "SignalK plugin for the PiSugar Raspberry Pi battery module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kreucher/signalk-pisugar.git"
+  },
+  "keywords": [
+    "signalk-node-server-plugin"
+  ],
+  "author": "Nicholas Kreucher",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kreucher/signalk-pisugar/issues"
+  },
+  "homepage": "https://github.com/kreucher/signalk-pisugar#readme"
+}
