@@ -4,6 +4,7 @@ const fs = require('fs');
 module.exports = function (app) {
   var plugin = {};
   var timer;
+  var rate;
 
   plugin.id = 'signalk-pisugar';
   plugin.name = 'SignalK PiSugar Plugin';
@@ -32,6 +33,7 @@ module.exports = function (app) {
       client = net.createConnection(options.unix_socket)
         .on('connect', ()=> {
           client.write('get battery');
+          setupPolling();
         })
         .on('data', function(data) {
           var dataSz = data.toString();
@@ -52,13 +54,46 @@ module.exports = function (app) {
 
           client.destroy();
         })
-        .on('error', function(data) {
-          app.error('unable to connect to socket: ' + data.toString());
+        .on('error', function(err) {
+          app.error('unable to connect to socket: ' + err.toString());
+          backoffPolling();
           client.destroy();
         });
     };
 
-    timer = setInterval(pollUnixSocket, options.rate * 1000);
+    function setupPolling(backoff=false) {
+      if (!backoff && timer && (rate == options.rate * 1000)) {
+        // setup correcty already
+        return;
+      }
+
+      if (timer) {
+        clearInterval(timer);
+      }
+
+      if (!rate || rate == 0) {
+        rate = options.rate * 1000;
+      }
+
+      if (backoff) {
+        // max backoff at ~10x normal rate
+        if (rate < (options.rate * 1000 * 10)) {
+          rate = rate * 2;
+          app.debug('reducing rate by 2x to ' + rate + 'ms due to error');
+        }
+      } else if (rate != (options.rate * 1000)) {
+        app.debug('resetting rate due to sucessful connection');
+        rate = options.rate * 1000;
+      }
+
+      timer = setInterval(pollUnixSocket, rate);
+    };
+
+    function backoffPolling() {
+      setupPolling(true);
+    };
+
+    setupPolling();
   };
 
   plugin.stop = function () {
