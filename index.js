@@ -5,6 +5,7 @@ module.exports = function (app) {
   var plugin = {};
   var timer;
   var rate;
+  var connected = false;
 
   plugin.id = 'signalk-pisugar';
   plugin.name = 'SignalK PiSugar Plugin';
@@ -33,20 +34,31 @@ module.exports = function (app) {
       client = net.createConnection(options.unix_socket)
         .on('connect', ()=> {
           client.write('get battery');
-          setupPolling();
         })
         .on('data', function(data) {
           var dataSz = data.toString();
           app.debug('got data => ' + dataSz);
 
-          // send to SignalK
-          var batteryPct = Number(dataSz.match(/[\d\.]+/)[0]) / 100;
-          if (batteryPct >= 0) {
+          // parse response
+          var battPct = Number(dataSz.match(/[\d\.]+/)[0]);
+          if (!battPct || battPct <= 0) {
+            app.setPluginError('Bad response from pisugar-server: ' + dataSz);
+            app.error('Could not parse pisugar-server response, expected a float, got: ' + dataSz);
+            backoffPolling();
+          } else {
+            // ok we got valid data, indicate we are good
+            if (!connected) {
+              connected = true;
+              app.setPluginStatus("Connected to pisugar-server.");
+              setupPolling();
+            }
+
+            // send to SignalK
             app.handleMessage(plugin.id, {
               updates: [{
                 values: [{
                   path: options.battery_pct_path,
-                  value: batteryPct
+                  value: (battPct / 100.0)
                 }]
               }]
             });
@@ -55,7 +67,20 @@ module.exports = function (app) {
           client.destroy();
         })
         .on('error', function(err) {
+          connected = false;
           app.error('unable to connect to socket: ' + err.toString());
+          switch(client._readableState.errored.code) {
+            case 'ENOENT':
+              app.setPluginError('Can not connect to pisugar-server, is it running?');
+              break;
+
+            case 'EACCES':
+              app.setPluginError('Permission denied: ' + options.unix_socket + '. Read/Write access required.');
+              break;
+
+            default:
+              app.setPluginError('Error connecting to socket:' + err.toString());
+          }
           backoffPolling();
           client.destroy();
         });
@@ -83,6 +108,8 @@ module.exports = function (app) {
         }
       } else if (rate != (options.rate * 1000)) {
         app.debug('resetting rate due to sucessful connection');
+        connected = true;
+        app.setPluginStatus("Re-connected to pisugar-server.");
         rate = options.rate * 1000;
       }
 
